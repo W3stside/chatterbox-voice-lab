@@ -1,0 +1,17 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# model caches
+models/
+.cache/
+*.safetensors
+
+# reference clips + generated audio (keep the dir, not the media)
+refs/*
+!refs/.gitkeep
+out.*
+*.wav
+*.opus

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>chatterbox-voice-lab</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  textarea { width: 100%; height: 6rem; font-size: 1rem; }
+  button { padding: .6rem 1rem; font-size: 1rem; }
+  #log { white-space: pre-wrap; font-family: ui-monospace, monospace; margin-top: 1rem; color: #444; }
+</style>
+</head>
+<body>
+<h1>chatterbox-voice-lab</h1>
+<p>Type a line. Clauses are synthesized and played sequentially (clause pipelining —
+the next clause synthesizes while the current one plays), matching the planned supra
+phone path.</p>
+<textarea id="text">Oil temperature is climbing. Ease off for a lap. We'll cool it and push again.</textarea>
+<p>
+  <label>format
+    <select id="fmt">
+      <option value="opus">opus</option>
+      <option value="wav">wav</option>
+    </select>
+  </label>
+  <button id="go">Speak</button>
+</p>
+<div id="log"></div>
+<script>
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+const logEl = document.getElementById('log');
+function log(m) { logEl.textContent += m + "\n"; }
+function clauses(t) { return t.split(/(?<=[.!?;:])\s+/).map(s => s.trim()).filter(Boolean); }
+
+async function synth(text, fmt) {
+  const t0 = performance.now();
+  const r = await fetch('/tts?format=' + fmt, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  const buf = await r.arrayBuffer();
+  log(`  "${text.slice(0, 32)}…"  ${fmt} ${buf.byteLength} bytes in ${Math.round(performance.now() - t0)}ms`);
+  return await ctx.decodeAudioData(buf);
+}
+
+function play(audioBuf, at) {
+  const src = ctx.createBufferSource();
+  src.buffer = audioBuf;
+  src.connect(ctx.destination);
+  src.start(at);
+  return at + audioBuf.duration;
+}
+
+document.getElementById('go').onclick = async () => {
+  await ctx.resume();
+  logEl.textContent = '';
+  const fmt = document.getElementById('fmt').value;
+  const cs = clauses(document.getElementById('text').value);
+  log(`${cs.length} clause(s)`);
+  if (!cs.length) return;
+
+  const tStart = performance.now();
+  let firstHeard = null;
+  let when = ctx.currentTime + 0.05;
+  let total = 0;
+
+  // Pipeline: synth the first clause, then while each plays, prefetch the next.
+  let pending = synth(cs[0], fmt);
+  for (let i = 0; i < cs.length; i++) {
+    const ab = await pending;
+    if (firstHeard === null) {
+      firstHeard = Math.round(performance.now() - tStart);
+      log(`first-audio ready in ${firstHeard}ms`);
+    }
+    if (i + 1 < cs.length) pending = synth(cs[i + 1], fmt); // prefetch during playback
+    when = play(ab, Math.max(when, ctx.currentTime));
+    total += ab.duration;
+  }
+  log(`done — ~${total.toFixed(2)}s audio`);
+};
+</script>
+</body>
+</html>
