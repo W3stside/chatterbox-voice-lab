@@ -1,0 +1,48 @@
+{
+    "name": "chatterbox-voice-lab (ROCm/gfx1100)",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    // GPU passthrough — the host's amdgpu driver + device nodes, handed into the container.
+    // group-add GIDs are the HOST's: video=44, render=991 (from `id` on the ghost). The
+    // render group owns /dev/kfd and /dev/dri/renderD128, so the container process needs it.
+    "runArgs": [
+        "--device=/dev/kfd",
+        "--device=/dev/dri",
+        "--group-add=44",
+        "--group-add=991",
+        "--security-opt", "seccomp=unconfined",
+        "--ipc=host",
+        "--shm-size=8g"
+    ],
+    "containerEnv": {
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "CLONE_REF": "refs/voice.wav",
+        // In-container path for the mounted universal-rules.md (host home != container home).
+        "CLAUDE_CODE_RULES_FILE": "/root/.config/claude/universal-rules.md"
+    },
+    // Persist the model cache + MIOpen tuned solvers across container rebuilds.
+    "mounts": [
+        "source=chatterbox-hf,target=/root/.cache/huggingface,type=volume",
+        "source=chatterbox-miopen,target=/root/.config/miopen,type=volume",
+        // Share the host's Claude auth + config so the VSCode extension doesn't ask to
+        // log in on every rebuild. First login writes creds into the host ~/.claude
+        // (persisted + shared by every container that mounts it). Same pattern as the
+        // M2-TS-Node-yarn template. ${localEnv:HOME} = the ghost's home (the container host).
+        "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind",
+        // Share the ghost's existing SSH key so git push over git@github.com works
+        // without generating a new key per container. Same bind pattern as ~/.claude above.
+        "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,readonly"
+    ],
+    "remoteUser": "root",
+    "workspaceFolder": "/workspaces/chatterbox-voice-lab",
+    "customizations": {
+        "vscode": {
+            "extensions": ["ms-python.python"],
+            "settings": {
+                "python.defaultInterpreterPath": "/opt/venv/bin/python"
+            }
+        }
+    }
+}
