@@ -15,3 +15,7 @@ refs/*
 out.*
 *.wav
 *.opus
+
+# per-experiment venvs (e.g. .venv-nano = CPU-only Chatterbox-Nano bake-off)
+.venv-*/
+out/
